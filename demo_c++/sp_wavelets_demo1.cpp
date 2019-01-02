@@ -1,0 +1,156 @@
+// pgv_ffw_wavelet.cpp: define el punto de entrada de la aplicación de consola.
+//
+#include "sigpack.h"
+#include <iostream>
+#include "fftw/fftw.h"
+#include "wavelets/wavelet.h"
+
+#define GP_SEND(X) gp.send2gp(##X);
+
+using namespace arma;
+using namespace sp;
+
+arma::mat wavelet_specgram(vec signal, double fs, Wavelet<double> &_wav) 
+{
+	double T = 1 / double(fs); // sampling period 
+	size_t N = signal.size();
+	vec scale_vector = arma::logspace(0, std::log2(signal.size()), (arma::uword)std::log2(signal.size()));
+	vec time_vector = arma::linspace(0, (N-1)/fs, N);
+	mat ret( (size_t) std::log2(signal.size()), N, fill::zeros);
+
+	for (size_t s = 0; s < scale_vector.size(); s++)
+	{
+		for (size_t t = 0; t < time_vector.size(); t++)
+		{
+			vec wav = _wav.child(time_vector, time_vector(t), scale_vector(s));
+			double tmp = arma::sum(T*arma::conv(wav, signal, "full")); // very very slow 
+			ret(s,t) = tmp;
+			printf("\rt = %10.3f, s = %d, C(t,d) = %f",time_vector(t),s,tmp);
+		}
+	}
+
+	return ret;
+}
+
+int main()
+{
+	std::cout << "Wavelets Analisys - V0.1" << std::endl;
+	std::cout << "--------------------------" << std::endl;
+	
+	// sampling data
+	double fs = 5000; // Hz
+	double tf = 1.0;	// end data time
+	double Ts = 1 / fs; // sampling period
+	size_t N = (size_t)tf*fs, NFFT = 64;
+
+	/// buffer declarations
+	vec signal(N), t(N), n(N), S(NFFT);
+	arma::mat wav_spec;
+	
+	/// plots
+	gplot gp;
+	gp.window(0, "Spectrum",				10,		10,		500,	400);
+	gp.window(1, "Time",					50,		50,		900,	400);
+	gp.window(2, "Spectrogram",				100,   100,	1440,	500);
+	gp.window(3, "Spectrogram Wavelets",	150,   150,	1000,	500);
+	gp.window(4, "Spectrogram Wavelets 2",  200,   200,	1000,	500);
+	gp.window(5, "Spectrogram Wavelets 3",  250,   250,	1000,	500);
+	gp.window(6, "Spectrogram Wavelets 4",  300,   300,	1000,	500);
+	gp.window(7, "Spectrogram Wavelets 5",  350,   350,	1000,	500);
+
+	/// signal parameters
+	double f_signal = 50; // 50Hz frequency signal
+	double T = 1 / f_signal; // sampling period
+	t = arma::linspace(0, tf, N);
+	
+	// Signal
+	for (size_t i = 0; i < t.size(); i++)
+	{
+		signal(i) = std::sin(2* PI*f_signal*t(i)) + 0.01*std::sin(2*PI*1000*f_signal*t(i));
+	}
+
+	// Calc FFT spectrogram
+	S = 10 * arma::log10(pwelch(signal, NFFT, NFFT / 2));
+	sp::FFTW X(N,FFTW_MEASURE);
+
+	// Calc spectrogram
+	mat P = 10 * arma::log10(arma::abs(specgram(signal, NFFT, NFFT / 2)));
+	wavelet_mexican_hat mex_hat;
+	wavelet_haar haar;
+	wavelet_shanon shanon;
+	//mat SW = 10 * arma::log10(arma::abs(wavelet_specgram(signal,fs,mex_hat)));
+	
+	// Plot
+	/*gp.figure(0);
+	gp.send2gp("set xtics (\"-Fs/2\" 1,\"0\" 256,\"Fs/2\" 512)");  // Direct call to gnuplot pipe
+	gp.ylabel("Power"); gp.xlabel("Frequency");
+	gp.plot_add_mat(S, "TestSig");
+	gp.plot_show();*/
+
+	gp.figure(1);
+	gp.ylabel("Amplitude"); gp.xlabel("Time");
+	//*************************************************************
+	// HERE UNCOMMENT FOR MULTIPLOT CRASH 
+	//gp.send2gp("set multiplot layout 3,1 title \" Mexican Hat Wavelet Test \" ");
+	//gp.send2gp("set key autotitle column nobox samplen 1 noenhanced ");
+	//gp.send2gp("");
+	//gp.send2gp("");
+	//*************************************************************
+	gp.plot_add(t,signal, "referenca signal 50Hz");
+	gp.plot_add(t, mex_hat.child(t, 0.05, 0.01), "wavelet b=0.05, s=0.01");
+	gp.plot_add(t, mex_hat.child(t, 0.15, 0.01), "wavelet b=0.15, s=0.01");
+	gp.plot_add(t, mex_hat.child(t, 0.25, 0.01), "wavelet b=0.25, s=0.01");
+	gp.plot_add(t, mex_hat.child(t, 0.35, 0.01), "wavelet b=0.35, s=0.01");
+	gp.plot_add(t, mex_hat.child(t, 0.45, 0.01), "wavelet b=0.45, s=0.01");
+	gp.plot_show();
+	//gp.send2gp("unset multiplot");
+
+	gp.figure(2);
+	gp.ylabel("Frequency"); gp.xlabel("Time");
+	gp.image(P);
+
+	/*gp.figure(3);
+	std::ofstream fsave("matrix_wavelet.dat", ofstream::binary);
+	SW.save(fsave, arma_ascii,true);
+	fsave.close();
+	gp.image(SW);*/
+	
+	gp.figure(4);
+	gp.ylabel("Amplitude"); gp.xlabel("Time");
+	gp.plot_add(t, signal, "referenca signal 50Hz");
+	arma::Col<double> tmp = mex_hat.child(t, 0.25 / 2, 0.025);
+	gp.plot_add(t, tmp, "wavelet b=0.25/2, s=0.025");
+	gp.plot_add(t, mex_hat.child(t, 3*0.25/2, 0.025), "wavelet b=3*0.25/2, s=0.025");
+	gp.plot_show();
+
+	gp.figure(5);
+	gp.ylabel("Amplitude"); gp.xlabel("Time");
+	gp.plot_add(t, signal, "referenca signal 50Hz");
+	gp.plot_add(t, mex_hat.child(t, 0.25, 0.05), "wavelet b=0.25, s=0.05");
+	gp.plot_show();
+
+	gp.figure(6);
+	gp.ylabel("Amplitude"); gp.xlabel("Time");
+	gp.plot_add(t, signal, "referenca signal 50Hz");
+	gp.plot_add(t, haar.child(t, 0.00, 0.1), "wavelet b=0.05, s=0.1");
+	gp.plot_add(t, haar.child(t, 0.10, 0.1), "wavelet b=0.15, s=0.1");
+	gp.plot_add(t, haar.child(t, 0.20, 0.1), "wavelet b=0.25, s=0.1");
+	gp.plot_add(t, haar.child(t, 0.30, 0.1), "wavelet b=0.35, s=0.1");
+	gp.plot_add(t, haar.child(t, 0.40, 0.1), "wavelet b=0.45, s=0.1");
+	gp.plot_show();
+
+	gp.figure(7);
+	gp.ylabel("Amplitude"); gp.xlabel("Time");
+	gp.plot_add(t, signal, "referenca signal 50Hz");
+	gp.plot_add(t, shanon.child(t, 0.00, 0.1), "wavelet b=0.05, s=0.1");
+	gp.plot_add(t, shanon.child(t, 0.10, 0.1), "wavelet b=0.15, s=0.1");
+	gp.plot_add(t, shanon.child(t, 0.20, 0.1), "wavelet b=0.25, s=0.1");
+	gp.plot_add(t, shanon.child(t, 0.30, 0.1), "wavelet b=0.35, s=0.1");
+	gp.plot_add(t, shanon.child(t, 0.40, 0.1), "wavelet b=0.45, s=0.1");
+	gp.plot_show();
+
+	system("pause");
+
+	return EXIT_SUCCESS;
+
+}
