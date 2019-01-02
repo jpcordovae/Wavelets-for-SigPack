@@ -1,5 +1,7 @@
 This is an implementation of Wavelets based on SigPack, a great wrapper of Armadillo, engine of Matlab and Octave. Is made in C++ and is very easy to use, portable, and fast.
 
+The library is NOT mine, I just only add the wavelets codes.
+
 SigPack
 =======
 SigPack is a C++ signal processing library using the Armadillo library as a base. The API will be 
